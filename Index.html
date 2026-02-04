@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGA Pro v5.4 - Gerenciamento de Armário</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        :root { 
+            --primary-blue: #003366; 
+            --primary-yellow: #FFCC00; 
+            --success: #27ae60; 
+            --danger: #c0392b; 
+            --maintenance: #3498db; 
+            --unknown: #000000;     
+            --bg: #f8f9fa; 
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 20px; overflow: hidden; }
+        .container { display: grid; grid-template-columns: 320px 1fr; gap: 20px; height: 95vh; }
+
+        .sidebar { 
+            background: var(--primary-yellow); padding: 20px; border-radius: 12px; 
+            box-shadow: 6px 6px 15px rgba(0,0,0,0.1); overflow-y: auto; 
+            display: flex; flex-direction: column; gap: 15px; border: 1px solid #e1b100;
+        }
+
+        .card { background: white; border: none; padding: 15px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); width: 100%; }
+        .stat { background: var(--primary-blue); color: white; padding: 12px; border-radius: 12px; text-align: center; }
+        .stat b { display: block; font-size: 1.1rem; color: var(--primary-yellow); }
+
+        .main-content { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        .dashboard { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; flex-shrink: 0; }
+
+        #renderArea { 
+            display: flex; flex-direction: row; gap: 25px; 
+            overflow-x: auto; overflow-y: hidden; padding-bottom: 15px;
+            flex-grow: 1; align-items: flex-start;
+        }
+
+        #renderArea::-webkit-scrollbar { height: 10px; }
+        #renderArea::-webkit-scrollbar-track { background: #e0e0e0; border-radius: 10px; }
+        #renderArea::-webkit-scrollbar-thumb { background: var(--primary-blue); border-radius: 10px; }
+
+        .bottom-analytics { 
+            background: var(--primary-blue); border-radius: 15px; padding: 20px; 
+            margin-top: 15px; display: grid; grid-template-columns: 280px 1fr 220px; 
+            gap: 20px; box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+            flex-shrink: 0; color: white; align-items: stretch;
+        }
+
+        .charts-scroll-container {
+            display: flex; flex-direction: row; gap: 20px; overflow-x: auto;
+            padding: 5px; background: rgba(255,255,255,0.05); border-radius: 10px;
+        }
+        
+        .charts-scroll-container::-webkit-scrollbar { height: 6px; }
+        .charts-scroll-container::-webkit-scrollbar-thumb { background: var(--primary-yellow); border-radius: 10px; }
+
+        .chart-box { flex: 0 0 180px; text-align: center; display: flex; flex-direction: column; align-items: center; }
+        .chart-box span { font-size: 0.65rem; font-weight: bold; color: var(--primary-yellow); margin-bottom: 5px; text-transform: uppercase; }
+
+        .floor-section { background: #fff; padding: 20px; border-radius: 15px; border: 1px solid #ddd; box-shadow: 0 4px 10px rgba(0,0,0,0.05); flex: 0 0 auto; min-height: min-content; }
+        .locker-grid { display: grid; gap: 6px; justify-content: start; background: #f4f4f4; padding: 10px; border-radius: 4px; border: 1px inset #ccc; }
+        
+        .locker { 
+            width: 85px; aspect-ratio: 2/3; cursor: pointer; display: flex; flex-direction: column; padding: 6px; 
+            position: relative; transition: 0.15s ease; border-width: 2.5px; border-style: solid; font-weight: bold;
+        }
+        .locker:hover { transform: scale(1.08); z-index: 10; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        
+        .free { background: rgba(39, 174, 96, 0.12); border-color: var(--success); color: var(--success); }
+        .rented { background: rgba(192, 57, 43, 0.12); border-color: var(--danger); color: var(--danger); }
+        .maintenance { background: rgba(52, 152, 219, 0.12); border-color: var(--maintenance); color: var(--maintenance); }
+        .unknown { background: rgba(0, 0, 0, 0.12); border-color: var(--unknown); color: var(--unknown); }
+
+        .l-num { font-size: 0.7rem; border-bottom: 1.5px solid currentColor; text-align: center; opacity: 0.8; margin-bottom: 4px; }
+        .l-info { font-size: 0.6rem; text-align: center; margin-top: auto; text-transform: uppercase; line-height: 1.2; padding-bottom: 2px; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+        .l-grade-label { font-weight: normal; opacity: 0.9; font-size: 0.5rem; margin-top: 2px; border-top: 0.5px solid currentColor; padding-top: 1px; }
+
+        input, select { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 5px; display: block; }
+        button { width: 100%; padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; margin-top: 5px; display: block; transition: 0.2s; }
+        button:hover { filter: brightness(1.2); }
+        .btn-blue { background: var(--primary-blue); }
+        .btn-green { background: var(--success); }
+        .btn-red { background: var(--danger); }
+        
+        .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; justify-content:center; align-items:center; z-index:1000; }
+        .modal { background:white; width:400px; padding:25px; border-radius:15px; border-top: 8px solid var(--primary-yellow); color: #333; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <aside class="sidebar">
+        <div style="text-align: center; background: var(--primary-blue); padding: 15px 10px; border-radius: 8px; border: 2px solid white;">
+            <h3 style="font-size: 0.95rem; color: white; margin: 0; text-transform: uppercase; letter-spacing: 1px;">Gerenciamento de Armário</h3>
+        </div>
+
+        <div class="card">
+            <h4>Importação</h4>
+            <input type="file" id="fileInput" accept=".xlsx, .xls, .pdf" onchange="handleFile(this)">
+            <div id="loadStatus" style="font-size: 0.7rem; color: var(--success); font-weight: bold;"></div>
+        </div>
+
+        <div class="card">
+            <h4>Adicionar Conjunto</h4>
+            <input type="text" id="fName" placeholder="Nome do Bloco">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <input type="number" id="fHor" placeholder="Colunas">
+                <input type="number" id="fVer" placeholder="Linhas">
+            </div>
+            <button onclick="addFloor()" class="btn-blue">Criar Conjunto</button>
+        </div>
+
+        <div class="card">
+            <button onclick="downloadBackup()" class="btn-blue" style="font-size: 0.8rem;">Salvar Backup</button>
+            <button onclick="document.getElementById('restFile').click()" style="background: #7f8c8d; font-size: 0.7rem; margin-top: 5px;">Restaurar</button>
+            <input type="file" id="restFile" class="hidden" onchange="restoreBackup(this)">
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="dashboard">
+            <div class="stat">Receita Anual Total<b id="revAnual">R$ 0,00</b></div>
+            <div class="stat">Receita Mensal<b id="revMensal">R$ 0,00</b></div>
+            <div class="stat">Vacância Anual<b id="vacancia">R$ 0,00</b></div>
+            <div class="stat">Taxa Ocupação<b id="ocupRate">0%</b></div>
+        </div>
+
+        <div id="renderArea"></div>
+
+        <div class="bottom-analytics">
+            <div id="generalChartBox" style="text-align: center; border-right: 1px solid rgba(255,255,255,0.2); padding-right: 10px;">
+                <span style="font-size: 0.75rem; font-weight: bold; color: var(--primary-yellow); text-transform: uppercase;">Resumo Geral</span>
+                <div style="height: 140px; margin-top: 5px;"><canvas id="generalChart"></canvas></div>
+            </div>
+            <div class="charts-scroll-container" id="individualChartsArea"></div>
+            <div style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
+                <button onclick="printLockerReport()" style="background: white; color: var(--primary-blue); font-size: 0.75rem; padding: 10px;">🖨️ Relatório Geral</button>
+                <button onclick="clearEverything()" style="background: var(--danger); font-size: 0.75rem; border: 1px solid white; padding: 10px;">🗑️ Limpar Armários</button>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div id="modal" class="modal-overlay">
+    <div class="modal">
+        <h3 id="mTitle" style="color:var(--primary-blue)">Armário</h3>
+        <div id="formActions">
+            <label style="font-size: 0.8rem; font-weight: bold;">BUSCAR ALUNO:</label>
+            <input list="studentList" id="mSearch" placeholder="Nome do aluno..." oninput="autoFill()">
+            <datalist id="studentList"></datalist>
+            <input type="text" id="mName" placeholder="Nome" readonly style="background:#f0f0f0">
+            <input type="text" id="mGrade" placeholder="Série" readonly style="background:#f0f0f0">
+            <input type="date" id="mDate">
+            <button onclick="confirmRent()" class="btn-green">Locar para Aluno</button>
+            <button onclick="setUnknown()" style="background: black;">Ocupado (Desconhecido)</button>
+            <button onclick="setMaintenance()" style="background: var(--maintenance);">Manutenção</button>
+        </div>
+        <div id="formInfo" class="hidden">
+            <div id="infoBox" style="background:#eee; padding:15px; border-radius:8px; margin-bottom:10px;">
+                <p><strong>Status:</strong> <span id="iStatus"></span></p>
+                <p><strong>Identificação:</strong> <span id="iDetail"></span></p>
+                <p><strong>Série:</strong> <span id="iGradeView"></span></p>
+                <p><strong>Início:</strong> <span id="iDate"></span></p>
+            </div>
+            <button id="btnContrato" onclick="createContract()" style="background:#2980b9">Gerar Contrato (PDF)</button>
+            <button onclick="freeLocker()" class="btn-red">Liberar / Disponibilizar</button>
+        </div>
+        <button onclick="closeModal()" style="background:#ccc; color:#333; margin-top:10px;">Voltar</button>
+    </div>
+</div>
+
+<script>
+    let db = { floors: [], students: [], contractCounter: 1 };
+    const PRECO = 280.00;
+    let selectedLocker = null;
+    let generalChart = null;
+
+    window.onload = () => {
+        const saved = localStorage.getItem('sga_v18_multi_charts');
+        if(saved) { db = JSON.parse(saved); buildStudentDatalist(); }
+        render();
+    };
+
+    function save() { localStorage.setItem('sga_v18_multi_charts', JSON.stringify(db)); render(); }
+
+    async function handleFile(input) {
+        const file = input.files[0]; if(!file) return;
+        if(file.name.endsWith('.pdf')) await processPDF(file); else await processExcel(file);
+        buildStudentDatalist(); save();
+    }
+
+    async function processExcel(file) {
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+        db.students = [];
+        json.forEach((row, i) => { if(i > 0 && row[0] && row[1]) db.students.push({ grade: String(row[0]).trim(), name: String(row[1]).trim().toUpperCase() }); });
+        document.getElementById('loadStatus').innerText = `${db.students.length} alunos carregados!`;
+    }
+
+    async function processPDF(file) {
+        const data = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument(new Uint8Array(data)).promise;
+        let text = "";
+        for(let i=1; i<=pdf.numPages; i++) { const page = await pdf.getPage(i); const content = await page.getTextContent(); text += content.items.map(item => item.str).join(" | ") + "\n"; }
+        db.students = [];
+        const lines = text.split('\n');
+        lines.forEach(line => {
+            const m = line.match(/(\d{5,8})\s*\|\s*([^|]+?)\s*\|\s*Matriculado/i);
+            if(m) db.students.push({ name: m[2].trim().toUpperCase(), grade: "PDF" });
+        });
+        document.getElementById('loadStatus').innerText = `${db.students.length} alunos (PDF)!`;
+    }
+
+    function buildStudentDatalist() {
+        document.getElementById('studentList').innerHTML = db.students.map(s => `<option value="${s.name}">${s.grade}</option>`).join('');
+    }
+
+    function render() {
+        const area = document.getElementById('renderArea'); area.innerHTML = "";
+        const chartsArea = document.getElementById('individualChartsArea'); chartsArea.innerHTML = "";
+        let globalCounts = { rented: 0, maintenance: 0, free: 0, unknown: 0 };
+        let globalTotal = 0;
+
+        db.floors.forEach((f, fIdx) => {
+            let floorCounts = { rented: 0, maintenance: 0, free: 0, unknown: 0 };
+            const section = document.createElement('div');
+            section.className = 'floor-section';
+            const grid = document.createElement('div');
+            grid.className = 'locker-grid'; grid.style.gridTemplateColumns = `repeat(${f.h}, 85px)`;
+
+            f.lockers.forEach(l => {
+                globalTotal++;
+                const status = l.status || 'free';
+                globalCounts[status]++; floorCounts[status]++;
+                let dName = status === 'maintenance' ? "MANUT." : (status === 'unknown' ? "ANTIGO" : (status === 'rented' ? l.student.split(' ')[0] : "LIVRE"));
+                grid.innerHTML += `<div class="locker ${status}" onclick="openModal(${fIdx}, ${l.id})">
+                    <div class="l-num">${l.num}</div>
+                    <div class="l-info">${dName}${status === 'rented' && l.grade ? `<span class="l-grade-label">${l.grade}</span>` : ''}</div>
+                </div>`;
+            });
+
+            section.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="margin:0; font-size:0.9rem; color:var(--primary-blue)">${f.name}</h3>
+                <button onclick="delFloor(${fIdx})" style="width:auto; background:none; color:red; font-size:0.6rem; box-shadow:none; padding:0;">Excluir</button>
+            </div>`;
+            section.appendChild(grid); area.appendChild(section);
+            addFloorChart(f.name, floorCounts, chartsArea);
+        });
+
+        updateDashboard(globalCounts, globalTotal);
+        updateGeneralChart(globalCounts);
+    }
+
+    function addFloorChart(name, counts, container) {
+        const box = document.createElement('div'); box.className = 'chart-box';
+        box.innerHTML = `<span>${name}</span><div style="height:110px; width:140px;"><canvas id="chart_${name.replace(/\s/g, '')}"></canvas></div>`;
+        container.appendChild(box);
+        const ctx = document.getElementById(`chart_${name.replace(/\s/g, '')}`).getContext('2d');
+        new Chart(ctx, { 
+            type: 'bar', 
+            data: { labels: ['OCP', 'MNT', 'LVR', 'ANT'], datasets: [{ data: [counts.rented, counts.maintenance, counts.free, counts.unknown], backgroundColor: ['#e74c3c', '#3498db', '#2ecc71', '#ffffff'], borderRadius: 3 }] }, 
+            options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#fff', font: {size: 8} }, grid: { color: 'rgba(255,255,255,0.2)' } }, y: { beginAtZero: true, ticks: { color: '#fff', font: {size: 8} }, grid: { color: 'rgba(255,255,255,0.2)' } } } } 
+        });
+    }
+
+    function updateGeneralChart(counts) {
+        const ctx = document.getElementById('generalChart').getContext('2d');
+        if(generalChart) generalChart.destroy();
+        generalChart = new Chart(ctx, { type: 'bar', data: { labels: ['OCP', 'MNT', 'LVR', 'ANT'], datasets: [{ data: [counts.rented, counts.maintenance, counts.free, counts.unknown], backgroundColor: ['#e74c3c', '#3498db', '#2ecc71', '#ffffff'], borderRadius: 5 }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#fff', font: {size: 9} }, grid: { color: 'rgba(255,255,255,0.2)' } }, y: { beginAtZero: true, ticks: { color: '#fff', font: {size: 9} }, grid: { color: 'rgba(255,255,255,0.2)' } } } } });
+    }
+
+    // --- NOVA LÓGICA DE DASHBOARD (CONFORME SOLICITADO) ---
+    function updateDashboard(counts, total) {
+        // Receita: Apenas armários locados para alunos (RENTED)
+        const receita = counts.rented * PRECO;
+        // Vacância: Apenas armários totalmente livres (FREE)
+        const vacancia = counts.free * PRECO;
+
+        document.getElementById('revAnual').innerText = receita.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+        document.getElementById('revMensal').innerText = (receita / 12).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+        document.getElementById('vacancia').innerText = vacancia.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+
+        // Taxa de Ocupação baseada na relação Locados vs Disponíveis (Locados + Livres)
+        const poolDisponivel = counts.rented + counts.free;
+        const rate = poolDisponivel > 0 ? Math.round((counts.rented / poolDisponivel) * 100) : 0;
+        document.getElementById('ocupRate').innerText = rate + "%";
+    }
+
+    function printLockerReport() {
+        const { jsPDF } = window.jspdf; const doc = new jsPDF();
+        doc.setFillColor(255, 204, 0); doc.rect(10, 10, 190, 15, "F");
+        doc.setFont("helvetica", "bold"); doc.setTextColor(0, 51, 102); doc.text("RELATÓRIO GERAL - SGA ADVENTISTA", 105, 20, { align: "center" });
+        let reportData = [];
+        db.floors.forEach(f => f.lockers.forEach(l => { if(l.status !== 'free') { let st = l.status === 'maintenance' ? "MANUTENÇÃO" : (l.status === 'rented' ? "LOCADO" : "OCUPADO DESCONHECIDO"); reportData.push([f.name, l.num, st, l.student || 'BLOQUEADO']); } }));
+        doc.autoTable({ startY: 30, head: [['Bloco', 'Nº', 'Status', 'Identificação']], body: reportData, theme: 'grid', headStyles: { fillColor: [0, 51, 102] } });
+        window.open(doc.output('bloburl'), '_blank');
+    }
+
+    function clearEverything() { if(confirm("Deseja desocupar TODOS os armários?")) { db.floors.forEach(f => f.lockers.forEach(l => { l.status = 'free'; l.student = ""; l.grade = ""; l.date = null; })); save(); } }
+    function openModal(fIdx, id) { selectedLocker = { fIdx, id }; const l = db.floors[fIdx].lockers.find(x => x.id === id); document.getElementById('modal').style.display = 'flex'; document.getElementById('mTitle').innerText = `Armário ${l.num}`; if(!l.status || l.status === 'free') { document.getElementById('formActions').classList.remove('hidden'); document.getElementById('formInfo').classList.add('hidden'); } else { document.getElementById('formActions').classList.add('hidden'); document.getElementById('formInfo').classList.remove('hidden'); let statusDisplay = l.status === 'maintenance' ? "Manutenção" : (l.status === 'unknown' ? "Ocupado (Desconhecido)" : "Locado (Aluno)"); document.getElementById('iStatus').innerText = statusDisplay; document.getElementById('iDetail').innerText = l.student || "N/A"; document.getElementById('iGradeView').innerText = l.grade || "N/A"; document.getElementById('iDate').innerText = l.date ? new Date(l.date).toLocaleDateString() : "N/A"; document.getElementById('btnContrato').style.display = (l.status === 'rented') ? 'block' : 'none'; } }
+    function autoFill() { const student = db.students.find(s => s.name === document.getElementById('mSearch').value.toUpperCase()); if(student) { document.getElementById('mName').value = student.name; document.getElementById('mGrade').value = student.grade; } }
+    function confirmRent() { const n = document.getElementById('mName').value; if(!n) return alert("Selecione um aluno."); const l = db.floors[selectedLocker.fIdx].lockers.find(x => x.id === selectedLocker.id); l.status = 'rented'; l.student = n; l.grade = document.getElementById('mGrade').value; l.date = document.getElementById('mDate').value; save(); closeModal(); }
+    function setMaintenance() { const l = db.floors[selectedLocker.fIdx].lockers.find(x => x.id === selectedLocker.id); l.status = 'maintenance'; l.student = "BLOQUEADO"; l.grade = ""; save(); closeModal(); }
+    function setUnknown() { const l = db.floors[selectedLocker.fIdx].lockers.find(x => x.id === selectedLocker.id); l.status = 'unknown'; l.student = "OCUPADO DESCONHECIDO"; l.grade = "ANTIGO"; save(); closeModal(); }
+    function freeLocker() { const l = db.floors[selectedLocker.fIdx].lockers.find(x => x.id === selectedLocker.id); l.status = 'free'; l.student = ""; l.grade = ""; l.date = null; save(); closeModal(); }
+    function createContract() { const { jsPDF } = window.jspdf; const doc = new jsPDF(); const l = db.floors[selectedLocker.fIdx].lockers.find(x => x.id === selectedLocker.id); doc.setFillColor(255, 204, 0); doc.rect(10, 10, 190, 40, "F"); doc.setFontSize(22); doc.setTextColor(0, 51, 102); doc.setFont("helvetica", "bold"); doc.text("EDUCAÇÃO ADVENTISTA", 105, 25, { align: "center" }); doc.setFontSize(14); doc.text("CONTRATO DE LOCAÇÃO", 105, 35, { align: "center" }); doc.setTextColor(0); doc.setFontSize(12); doc.text(`Aluno: ${l.student}`, 20, 60); doc.text(`Armário: ${l.num}`, 20, 70); window.open(doc.output('bloburl'), '_blank'); }
+    function addFloor() { const h = parseInt(document.getElementById('fHor').value); const v = parseInt(document.getElementById('fVer').value); const n = document.getElementById('fName').value; if(!h || !v || !n) return alert("Preencha campos."); const lockers = []; for(let i=1; i<=(h*v); i++) lockers.push({ id: Date.now()+i, num: i, status: 'free' }); db.floors.push({ name: n, h, v, lockers }); save(); }
+    function delFloor(i) { if(confirm("Excluir?")) { db.floors.splice(i,1); save(); } }
+    function closeModal() { document.getElementById('modal').style.display = 'none'; }
+    function downloadBackup() { const a = document.createElement('a'); a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db)); a.download = `backup.json`; a.click(); }
+    function restoreBackup(i) { const r = new FileReader(); r.onload = function() { db = JSON.parse(this.result); save(); }; r.readAsText(i.files[0]); }
+</script>
+</body>
+</html>
